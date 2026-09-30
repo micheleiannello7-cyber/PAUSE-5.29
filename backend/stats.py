@@ -68,7 +68,8 @@ def build_stats(state: dict, categories: List[dict], story_cats: Dict[str, str],
                 cat_totals: Dict[str, int], lang: str = "it") -> dict:
     now = datetime.now(timezone.utc)
     completed = list(state.get("completed_story_ids", []))
-    completions = list(state.get("completions", []))
+    # Re-reads live in the log for the history screen only.
+    completions = [c for c in state.get("completions", []) if not c.get("reread")]
     total_minutes = int(state.get("total_minutes", 0))
     listen_seconds = int(state.get("listen_seconds", 0))
     listen_by_month: Dict[str, int] = dict(state.get("listen_by_month", {}) or {})

@@ -54,12 +54,12 @@ export default function Premium() {
     : plan.id === "lifetime" ? t.pw_lifetime_hint : t.pw_no_charge;
 
   // Confronto Gratis / Premium: solo funzioni presenti nell'app (vedi backend
-  // FREE_/PREMIUM_SESSION_LIMIT, COOLDOWN, FREE_SAVED_LIMIT, EARLY_ACCESS_DAYS
+  // FREE_/PREMIUM_CAPACITY, HISTORY_FREE_DAYS, FREE_SAVED_LIMIT, EARLY_ACCESS_DAYS
   // e i gate `isPremium` di audio, browse, playlist, stats, accento).
   type Row = { icon: string; title: string; sub?: string; free: string | false; premium: string | true };
   const rows: Row[] = [
-    { icon: "layers-outline", title: t.pw_r_sessions, free: "5", premium: "6" },
-    { icon: "time-outline", title: t.pw_r_pause, free: t.pw_hours.replace("{h}", "4"), premium: t.pw_hours.replace("{h}", "2") },
+    { icon: "layers-outline", title: t.pw_r_sessions, sub: t.pw_r_sessions_sub, free: "5", premium: "6" },
+    { icon: "time-outline", title: t.pw_r_history, sub: t.pw_r_history_sub, free: t.pw_r_history_free, premium: t.pw_r_history_premium },
     { icon: "headset-outline", title: t.pw_r_audio, sub: t.pw_r_audio_sub, free: false, premium: true },
     { icon: "albums-outline", title: t.pw_r_choose, sub: t.pw_r_choose_sub, free: false, premium: true },
     { icon: "musical-notes-outline", title: t.pw_r_playlist, sub: t.pw_r_playlist_sub, free: false, premium: true },

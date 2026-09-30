@@ -17,6 +17,7 @@ import { GradientText } from "@/src/components/gradient-text";
 import { HomeButton } from "@/src/components/home-button";
 import { Screen } from "@/src/components/screen";
 import { useI18n } from "@/src/i18n";
+import { formatCountdown } from "@/src/components/limit-badge";
 
 // Sunset hill at dusk — person with dog looking at the horizon (bundled, AI generated).
 const HERO = require("../assets/images/pause-hero.jpg");
@@ -44,17 +45,18 @@ export default function PauseLimit() {
     enabled: !!userId,
   });
 
+  // Countdown al prossimo credito (mm:ss), aggiornato ogni secondo.
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30_000);
+    const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  const blockedUntilMs = data?.blocked_until ? Date.parse(data.blocked_until) : 0;
-  const totalMinutes = Math.max(0, Math.ceil((blockedUntilMs - now) / 60_000));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  const returnIn = hours > 0 ? `${hours}h ${minutes}m` : `${minutes} min`;
+  const nextAtMs = data?.next_credit_at ? Date.parse(data.next_credit_at) : 0;
+  const returnIn = formatCountdown(Math.floor((nextAtMs - now) / 1000));
+  useEffect(() => {
+    if (nextAtMs && now >= nextAtMs) refetch();
+  }, [now >= nextAtMs, nextAtMs, refetch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (data && !data.blocked) {
@@ -88,7 +90,7 @@ export default function PauseLimit() {
             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
               <View style={styles.pill} testID="limit-timer">
                 <Ionicons name="time-outline" size={15} color={colors.onSurface} />
-                <Text style={styles.pillText}>{t.limit_active}</Text>
+                <Text style={styles.pillText}>{nextAtMs ? returnIn : t.limit_active}</Text>
               </View>
               <HomeButton testID="pause-limit-home" />
             </View>

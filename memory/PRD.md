@@ -440,3 +440,11 @@ Solo presentazione (nessuna modifica backend/contenuti):
 - Dipendenze backend (pip) e frontend (yarn) reinstallate; `EMERGENT_LLM_KEY` configurata in backend/.env per Object Storage + AI.
 - Seed automatico all'avvio: 12 categorie, 493 storie. `/api/health` = ok (db: true).
 - Preview verificata: onboarding, selezione categorie con artwork 3D da Object Storage, catalogo storie. App pronta.
+
+## Update — Crediti a ricarica, limite argomenti, Cronologia (giu 2026)
+- **Storie disponibili (token bucket)**: 5 base / 6 Premium, −1 quando il lettore resta >5 s sul capitolo 1 (storie nuove), +1 ogni 60 min per entrambi. Backend: `FREE_CAPACITY`, `PREMIUM_CAPACITY`, `RECHARGE_SECONDS`, campi `credits`/`credits_at` in `user_state`; `limit-check` restituisce `credits, capacity, next_credit_in, next_credit_at`. `ENFORCE_LIMIT="true"` in backend/.env. 0 crediti → `/pause-limit` con countdown mm:ss.
+- **Limite argomenti**: base max 4 categorie specifiche (`FREE_TOPICS_LIMIT`, 402 `topics_limit`), ESPLORA sempre ok, Premium illimitato. Toast bloccante in onboarding e tab Argomenti (`topics-limit-toast`).
+- **Indicatore crediti** `src/components/limit-badge.tsx` (libro 3D `kind-book.png`, numero, slot, 6° slot Premium dorato, timer) in Home (`home-credits`), Argomenti, Salvati. `home-read-counter.tsx` rimosso.
+- **Premium screen**: righe "Storie disponibili 5→6 (+1 ogni 60 min)" e "Cronologia 10 giorni → Completa".
+- **Cronologia** `app/history.tsx` (Profilo → "Le tue scoperte" → Cronologia): costruita su `completions` (rilettura loggata con `reread:true`, ignorata da stats). Base: ultimi 10 giorni + card Premium; Premium: tutto + ricerca titolo + filtri periodo/categoria. Endpoint `GET /api/user/{id}/history?q&category_id&since`.
+- Test: `/app/test_reports/iteration_3.json` (backend 10/10, frontend OK).

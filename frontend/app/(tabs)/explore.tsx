@@ -1,10 +1,12 @@
+import { useState } from "react";
 import { View, Text, ScrollView, ActivityIndicator, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/src/api";
 import { makeStyles, spacing, typography } from "@/src/theme";
 import { useUserId } from "@/src/session";
-import { ALL_ID } from "@/src/components/category-grid";
+import { ALL_ID, FREE_TOPICS_LIMIT } from "@/src/components/category-grid";
+import { OnboardingToast, OnboardingNotice } from "@/src/components/onboarding-toast";
 import { TopicPicker, TopicsBackdrop } from "@/src/components/topic-picker";
 import { LimitBadge } from "@/src/components/limit-badge";
 import { ONB } from "@/src/components/onboarding-palette";
@@ -19,8 +21,12 @@ export default function Explore() {
   const { t } = useI18n();
   const styles = useStyles();
   const cats = useQuery({ queryKey: ["categories"], queryFn: api.categories });
-  const { selected, modes, onToggleCategory, onToggleMode, save, userQuery } = useTopicPreferences(userId);
+  const [notice, setNotice] = useState<OnboardingNotice | null>(null);
+  const { selected, modes, onToggleCategory, onToggleMode, save, userQuery } = useTopicPreferences(
+    userId, () => setNotice({ title: t.topics_limit_t, body: t.topics_limit_b, icon: "lock-closed-outline" }),
+  );
   const count = selected.has(ALL_ID) ? cats.data?.length ?? 0 : selected.size;
+  const showMax = !userQuery.data?.is_premium && !selected.has(ALL_ID);
   const failed = cats.isError || userQuery.isError;
   const loading = !cats.data || !userQuery.data;
 
@@ -45,13 +51,14 @@ export default function Explore() {
             titleAccessory={<LimitBadge testID="explore-limit-badge" />}
             status={<View testID="explore-save-status" accessibilityLiveRegion="polite">
               <View style={styles.statusRow}>
-                <Text style={styles.status} testID="interests-count">{count === 0 ? t.no_interests : `${count} ${count === 1 ? t.interest_1 : t.interests}`}</Text>
+                <Text style={styles.status} testID="interests-count">{count === 0 ? t.no_interests : `${count} ${count === 1 ? t.interest_1 : t.interests}`}{showMax ? ` · ${t.topics_limit_status(FREE_TOPICS_LIMIT)}` : ""}</Text>
                 {save.isPending ? <ActivityIndicator size="small" color={ONB.cyan} testID="explore-saving" /> : null}
               </View>
               {save.isError ? <Text style={styles.saveError} testID="explore-save-error">{t.preferences_save_error}</Text> : null}
             </View>} />
         </ScrollView>
       )}
+      <OnboardingToast notice={notice} bottom={insets.bottom + spacing.xxl} onHide={() => setNotice(null)} testID="topics-limit-toast" />
     </View>
   );
 }

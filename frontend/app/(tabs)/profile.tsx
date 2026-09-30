@@ -171,6 +171,15 @@ export default function Profile() {
         />
       </Section>
 
+      <Section title={t.library_section}>
+        <Pressable style={styles.row} onPress={() => router.push("/history")} testID="history-row">
+          <Ionicons name="library-outline" size={20} color={colors.onSurface} />
+          <Text style={styles.rowText}>{t.history_row}</Text>
+          <Text style={styles.rowValue}>{user?.completed_story_ids?.length ?? 0}</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </Pressable>
+      </Section>
+
       <Section title={t.my_interests}>
         <Pressable style={styles.row} onPress={() => router.push("/(tabs)/explore")} testID="edit-interests">
           <Ionicons name="compass-outline" size={20} color={colors.onSurface} />

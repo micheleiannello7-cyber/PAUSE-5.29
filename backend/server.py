@@ -227,6 +227,9 @@ class UserState(BaseModel):
     session_story_ids: List[str] = Field(default_factory=list)
     session_seconds: int = 0
     is_premium: bool = False
+    # Story credits (token bucket): None = never initialised (full).
+    credits: Optional[int] = None
+    credits_at: Optional[str] = None
     listen_seconds: int = 0
     unlocked_categories: List[str] = Field(default_factory=list)
     # UI preferences persisted on the profile (travel across devices/reinstalls).
@@ -476,10 +479,18 @@ async def _pick_by_taste(query: dict, state: Optional[dict]) -> Optional[dict]:
 # pragmatic placeholder driven by the client; when RevenueCat is connected,
 # gate on its entitlement instead.
 # ---------------------------------------------------------------------------
-FREE_SESSION_LIMIT = 5
-PREMIUM_SESSION_LIMIT = 6
-FREE_COOLDOWN_HOURS = 4
-PREMIUM_COOLDOWN_HOURS = 2
+# Story credits ("storie disponibili"): a token bucket. Every reader starts
+# full (5 free / 6 premium); a story consumes one credit once the reader
+# dwells on chapter 1; credits come back one every RECHARGE_SECONDS for both
+# tiers — only the capacity differs.
+FREE_CAPACITY = 5
+PREMIUM_CAPACITY = 6
+RECHARGE_SECONDS = 3600
+# Free readers keep at most this many specific categories active ("all" is
+# always allowed); premium has no cap.
+FREE_TOPICS_LIMIT = 4
+# Reading history: free readers browse the last N days only (records are kept).
+HISTORY_FREE_DAYS = 10
 # Free users can keep up to 20 bookmarks and 20 favourites; premium is unlimited.
 FREE_SAVED_LIMIT = 20
 # New stories are Premium-exclusive for this many days after their release
@@ -509,11 +520,53 @@ def _is_new(doc: dict) -> bool:
     return (datetime.now(timezone.utc) - created) < timedelta(days=NEW_BADGE_DAYS)
 
 
-def _limits_for(state: dict) -> tuple[int, int]:
-    """Return (session_limit, cooldown_hours) for this user's tier."""
-    if state and state.get("is_premium"):
-        return PREMIUM_SESSION_LIMIT, PREMIUM_COOLDOWN_HOURS
-    return FREE_SESSION_LIMIT, FREE_COOLDOWN_HOURS
+def _capacity_for(state: Optional[dict]) -> int:
+    """Max story credits for this user's tier."""
+    return PREMIUM_CAPACITY if state and state.get("is_premium") else FREE_CAPACITY
+
+
+def _limit_enforced(state: dict) -> bool:
+    return os.environ.get("ENFORCE_LIMIT", "false").lower() == "true" and state.get("limit_enabled", True)
+
+
+def _credit_state(state: dict, now: datetime) -> tuple[int, datetime, bool]:
+    """Token bucket read: (credits, anchor, changed). `anchor` is the instant the
+    current recharge started counting from; meaningful only when credits < cap."""
+    cap = _capacity_for(state)
+    raw = state.get("credits")
+    anchor = _parse_dt(state.get("credits_at"))
+    if raw is None or anchor is None:
+        return cap, now, True
+    credits = int(raw)
+    changed = False
+    if credits < cap:
+        gained = int((now - anchor).total_seconds() // RECHARGE_SECONDS)
+        if gained > 0:
+            credits = min(cap, credits + gained)
+            anchor = anchor + timedelta(seconds=gained * RECHARGE_SECONDS)
+            changed = True
+    if credits > cap:  # premium → free downgrade
+        credits, changed = cap, True
+    return credits, anchor, changed
+
+
+def _next_credit_seconds(credits: int, anchor: datetime, cap: int, now: datetime) -> int:
+    if credits >= cap:
+        return 0
+    return max(1, RECHARGE_SECONDS - int((now - anchor).total_seconds()))
+
+
+async def _refresh_credits(user_id: str, state: dict, now: datetime) -> tuple[int, datetime, int]:
+    """Apply pending recharges and persist them. Returns (credits, anchor, cap)."""
+    cap = _capacity_for(state)
+    credits, anchor, changed = _credit_state(state, now)
+    if changed:
+        await db.user_state.update_one(
+            {"user_id": user_id},
+            {"$set": {"credits": credits, "credits_at": anchor.isoformat(), "session_count": cap - credits}},
+        )
+        state["credits"], state["credits_at"], state["session_count"] = credits, anchor.isoformat(), cap - credits
+    return credits, anchor, cap
 
 
 KIND_BY_MODE = {"stories": "story", "lessons": "lesson"}
@@ -723,8 +776,8 @@ async def build_playlist(
     state = await _get_or_create_state(user_id)
     completed = state.get("completed_story_ids", [])
     interests = [i for i in state.get("interests", []) if i and i != "all"]
-    session_limit, _ = _limits_for(state)
-    slots = max(1, session_limit - int(state.get("session_count", 0)))
+    credits, _, _ = await _refresh_credits(user_id, state, datetime.now(timezone.utc))
+    slots = max(1, credits)
     max_items = min(3, slots)
 
     # Same visibility rules as the catalog: early-access window for free
@@ -810,10 +863,15 @@ async def user_session_stories(user_id: str, lang: Optional[str] = Query("it")):
 
 @api_router.post("/user/interests", response_model=UserState)
 async def set_interests(payload: InterestsUpdate):
-    await _get_or_create_state(payload.user_id)
+    state = await _get_or_create_state(payload.user_id)
+    interests = normalize_category_ids(payload.interests)
+    specific = [i for i in interests if i != "all"]
+    if not state.get("is_premium") and len(specific) > FREE_TOPICS_LIMIT:
+        # 402 Payment Required: the client shows the topics-limit notice.
+        raise HTTPException(402, {"code": "topics_limit", "limit": FREE_TOPICS_LIMIT})
     await db.user_state.update_one(
         {"user_id": payload.user_id},
-        {"$set": {"interests": normalize_category_ids(payload.interests)}},
+        {"$set": {"interests": interests}},
     )
     doc = await db.user_state.find_one({"user_id": payload.user_id}, {"_id": 0})
     return UserState(**doc)
@@ -1096,30 +1154,21 @@ async def complete_story(payload: CompleteRequest):
     completed.add(payload.story_id)
     total_minutes = state.get("total_minutes", 0) + (payload.minutes if was_new else 0)
 
-    # Session logic: N approfondimenti → pausa (5/4h free, 6/2h premium).
+    # Credits: a NEW story consumes one credit (token bucket, +1 every hour).
     now = datetime.now(timezone.utc)
-    blocked_until_raw = state.get("blocked_until")
-    blocked_until = _parse_dt(blocked_until_raw)
-    session_count = state.get("session_count", 0)
+    credits, anchor, cap = await _refresh_credits(payload.user_id, state, now)
     session_story_ids = list(state.get("session_story_ids", []))
     session_seconds = state.get("session_seconds", 0)
-    # If the previous block has expired, reset session count.
-    if blocked_until and now >= blocked_until:
-        session_count = 0
-        blocked_until = None
-        session_story_ids = []
-        session_seconds = 0
     if was_new:
-        session_count += 1
+        if credits >= cap:
+            # Fully recharged → this reading opens a new "session" (recap list).
+            session_story_ids = []
+            session_seconds = 0
+            anchor = now
+        if credits > 0:
+            credits -= 1
         session_story_ids.append(payload.story_id)
         session_seconds += max(0, min(payload.seconds, 1800))
-    session_limit, cooldown_hours = _limits_for(state)
-    enforce_limit = (
-        os.environ.get("ENFORCE_LIMIT", "false").lower() == "true"
-        and state.get("limit_enabled", True)
-    )
-    if enforce_limit and session_count >= session_limit and not blocked_until:
-        blocked_until = now + timedelta(hours=cooldown_hours)
 
     today = now.strftime("%Y-%m-%d")
     last_active = state.get("last_active_date")
@@ -1138,14 +1187,18 @@ async def complete_story(payload: CompleteRequest):
         active_days.append(today)
     active_days = active_days[-400:]
     completions = list(state.get("completions", []))
-    if was_new:
-        story_doc = await db.stories.find_one({"id": payload.story_id}, {"_id": 0, "category_id": 1})
-        completions.append({
-            "story_id": payload.story_id,
-            "category_id": story_doc.get("category_id") if story_doc else None,
-            "at": now.isoformat(),
-            "minutes": payload.minutes,
-        })
+    story_doc = await db.stories.find_one({"id": payload.story_id}, {"_id": 0, "category_id": 1})
+    entry = {
+        "story_id": payload.story_id,
+        "category_id": story_doc.get("category_id") if story_doc else None,
+        "at": now.isoformat(),
+        "minutes": payload.minutes,
+    }
+    if not was_new:
+        # Re-reads are kept for the reading history but don't count as new
+        # discoveries (stats ignore them).
+        entry["reread"] = True
+    completions.append(entry)
 
     await db.user_state.update_one(
         {"user_id": payload.user_id},
@@ -1153,10 +1206,12 @@ async def complete_story(payload: CompleteRequest):
             "$set": {
                 "completed_story_ids": list(completed),
                 "total_minutes": total_minutes,
-                "session_count": session_count,
-                "session_story_ids": session_story_ids[-session_limit:],
+                "credits": credits,
+                "credits_at": anchor.isoformat(),
+                "session_count": cap - credits,
+                "session_story_ids": session_story_ids[-cap:],
                 "session_seconds": session_seconds,
-                "blocked_until": blocked_until.isoformat() if blocked_until else None,
+                "blocked_until": None,
                 "streak_days": streak,
                 "best_streak": best_streak,
                 "last_active_date": today,
@@ -1215,37 +1270,92 @@ def _parse_dt(value):
 @api_router.get("/user/{user_id}/limit-check")
 async def limit_check(user_id: str):
     state = await _get_or_create_state(user_id)
-    enforce = (
-        os.environ.get("ENFORCE_LIMIT", "false").lower() == "true"
-        and state.get("limit_enabled", True)
-    )
-    session_count = state.get("session_count", 0)
-    session_seconds = state.get("session_seconds", 0)
+    enforce = _limit_enforced(state)
     now = datetime.now(timezone.utc)
-    blocked_until = _parse_dt(state.get("blocked_until"))
-
-    # Auto-reset expired blocks (persist).
-    if blocked_until and now >= blocked_until:
-        await db.user_state.update_one(
-            {"user_id": user_id},
-            {"$set": {"session_count": 0, "blocked_until": None, "session_story_ids": [], "session_seconds": 0}},
-        )
-        session_count = 0
-        session_seconds = 0
-        blocked_until = None
-
-    remaining_seconds = int((blocked_until - now).total_seconds()) if blocked_until else 0
-    session_limit, _ = _limits_for(state)
+    credits, anchor, cap = await _refresh_credits(user_id, state, now)
+    next_in = _next_credit_seconds(credits, anchor, cap, now)
+    next_at = (now + timedelta(seconds=next_in)) if next_in else None
+    blocked = bool(enforce and credits <= 0)
     return {
         "enforce": enforce,
-        "session_count": session_count,
-        "session_seconds": session_seconds,
-        "limit": session_limit,
+        "credits": credits,
+        "capacity": cap,
+        "recharge_seconds": RECHARGE_SECONDS,
+        "next_credit_in": next_in,
+        "next_credit_at": next_at.isoformat() if next_at else None,
+        # Legacy fields kept for existing UI: "used" count and the reopen time.
+        "session_count": cap - credits,
+        "session_seconds": state.get("session_seconds", 0),
+        "limit": cap,
         "is_premium": bool(state.get("is_premium")),
-        "reached": bool(enforce and session_count >= session_limit),
-        "blocked": bool(enforce and blocked_until),
-        "blocked_until": blocked_until.isoformat() if blocked_until else None,
-        "remaining_seconds": max(0, remaining_seconds),
+        "reached": bool(enforce and credits <= 0),
+        "blocked": blocked,
+        "blocked_until": next_at.isoformat() if blocked and next_at else None,
+        "remaining_seconds": next_in if blocked else 0,
+    }
+
+
+class HistoryItem(BaseModel):
+    story: StoryPreview
+    read_at: str
+    reread: bool = False
+
+
+@api_router.get("/user/{user_id}/history")
+async def user_history(
+    user_id: str,
+    lang: Optional[str] = Query("it"),
+    q: Optional[str] = Query(None),
+    category_id: Optional[str] = Query(None),
+    since: Optional[str] = Query(None),
+):
+    """Reading history (latest read per story, newest first) built from the
+    existing `completions` log. Free readers only see the last
+    HISTORY_FREE_DAYS days and cannot search/filter; nothing is deleted."""
+    state = await _get_or_create_state(user_id)
+    premium = bool(state.get("is_premium"))
+    now = datetime.now(timezone.utc)
+    latest: dict = {}
+    for c in state.get("completions", []):
+        at = _parse_dt(c.get("at"))
+        sid = c.get("story_id")
+        if not at or not sid:
+            continue
+        prev = latest.get(sid)
+        if not prev or at > prev["at"]:
+            latest[sid] = {"at": at, "reread": bool(c.get("reread"))}
+    entries = sorted(latest.items(), key=lambda kv: kv[1]["at"], reverse=True)
+    hidden = 0
+    if not premium:
+        threshold = now - timedelta(days=HISTORY_FREE_DAYS)
+        visible = [(sid, e) for sid, e in entries if e["at"] >= threshold]
+        hidden = len(entries) - len(visible)
+        entries = visible
+    else:
+        since_dt = _parse_dt(since)
+        if since_dt:
+            entries = [(sid, e) for sid, e in entries if e["at"] >= since_dt]
+    ids = [sid for sid, _ in entries]
+    docs = await db.stories.find({"id": {"$in": ids}}, {"_id": 0, "chapters": 0}).to_list(len(ids) or 1)
+    by_id = {d["id"]: _localize(d, _lang(lang)) for d in docs}
+    items: List[HistoryItem] = []
+    needle = (q or "").strip().lower() if premium else ""
+    cat = category_id if premium else None
+    for sid, e in entries:
+        doc = by_id.get(sid)
+        if not doc:
+            continue
+        if cat and doc.get("category_id") != cat:
+            continue
+        if needle and needle not in f"{doc.get('title', '')} {doc.get('hook', '')}".lower():
+            continue
+        items.append(HistoryItem(story=StoryPreview(**doc), read_at=e["at"].isoformat(), reread=e["reread"]))
+    return {
+        "items": items,
+        "is_premium": premium,
+        "window_days": None if premium else HISTORY_FREE_DAYS,
+        "hidden_count": hidden,
+        "total": len(latest),
     }
 
 @api_router.get("/content/report")

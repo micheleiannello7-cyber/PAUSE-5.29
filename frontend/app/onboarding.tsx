@@ -11,7 +11,7 @@ import * as Haptics from "@/src/haptics";
 import { api, ProfileInput } from "@/src/api";
 import { makeStyles, useTheme, spacing, typography, radius, withAlpha } from "@/src/theme";
 import { getOrCreateUserId, setOnboarded } from "@/src/session";
-import { toggleInterest } from "@/src/components/category-grid";
+import { toggleInterest, hitsTopicLimit } from "@/src/components/category-grid";
 import { PagerDots } from "@/src/components/pager";
 import { OnboardingIntro } from "@/src/components/onboarding-intro";
 import { OnboardingProfile, ProfileDraft, MIN_NAME } from "@/src/components/onboarding-profile";
@@ -22,6 +22,7 @@ import { OnboardingToast, OnboardingNotice } from "@/src/components/onboarding-t
 import { ONB } from "@/src/components/onboarding-palette";
 import { useI18n } from "@/src/i18n";
 import { useAuth } from "@/src/auth";
+import { usePremiumFlag } from "@/src/premium";
 
 type Mode = "stories" | "lessons";
 
@@ -55,6 +56,16 @@ export default function Onboarding() {
   }, [auth.user]);
   const styles = useStyles();
   const { colors } = useTheme();
+  const isPremium = usePremiumFlag();
+  // Utente base: al massimo 4 argomenti attivi (ESPLORA sempre consentita).
+  const onToggleCategory = (id: string) => {
+    if (hitsTopicLimit(selected, id, isPremium)) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      setNotice({ title: t.topics_limit_t, body: t.topics_limit_b, icon: "lock-closed-outline" });
+      return;
+    }
+    setSelected((prev) => toggleInterest(prev, id));
+  };
   const { data: categories, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["categories"],
     queryFn: api.categories,
@@ -178,7 +189,7 @@ export default function Onboarding() {
         <View style={styles.fitArea} testID="onboarding-selection-scroll">
           <Animated.View key="topics" entering={enterFrom(dir)} layout={LAYOUT} style={styles.fitArea}>
             <TopicPicker testID="onboarding-topics" categories={categories} selected={selected} modes={modes}
-              onToggleMode={toggleMode} onToggleCategory={(id) => setSelected((prev) => toggleInterest(prev, id))}
+              onToggleMode={toggleMode} onToggleCategory={onToggleCategory}
               disabled={saving} staggerIn columns={4} fit />
           </Animated.View>
         </View>
@@ -198,7 +209,7 @@ export default function Onboarding() {
       )}
       </OnboardingSwipe>
 
-      <OnboardingToast notice={notice} bottom={insets.bottom + 132} onHide={() => setNotice(null)} />
+      <OnboardingToast notice={notice} bottom={insets.bottom + 132} onHide={() => setNotice(null)} testID="topics-limit-toast" />
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.sm + 2 }]}>
         {topics ? (

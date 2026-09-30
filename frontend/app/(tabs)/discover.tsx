@@ -18,7 +18,7 @@ import { HomeCategoryCarousel } from "@/src/components/home-category-carousel";
 import { HomeStoryDeck, CardRect, DECK_BELOW_CARD_H } from "@/src/components/home-story-deck";
 import { StoryMorph, MORPH_DURATION, MORPH_EASING } from "@/src/components/story-morph";
 import { useMorphHost } from "@/src/components/morph-host";
-import { HomeReadCounter } from "@/src/components/home-read-counter";
+import { LimitBadge } from "@/src/components/limit-badge";
 import { HomeBackdrop } from "@/src/components/home-backdrop";
 import { ResumeCard } from "@/src/components/resume-card";
 import { MilestoneCelebration } from "@/src/components/milestone-celebration";
@@ -266,7 +266,7 @@ export default function Discover() {
       <Animated.View style={[styles.header, { width }, headerAway]} testID="home-header">
         <PauseLogo prominent />
         <View style={styles.headerRight}>
-          <HomeReadCounter count={completedCount ?? 0} />
+          <LimitBadge testID="home-credits" />
           {firstName ? (
             <View style={styles.greeting} testID="home-greeting">
               <Text style={styles.greetingHi} numberOfLines={1}>{t.greeting},</Text>

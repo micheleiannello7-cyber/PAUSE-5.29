@@ -373,8 +373,8 @@ export default function DeepDive() {
   }, [userId, id, !!story]);
 
   // Mark as completed once: when the reader reaches the end (or taps "next").
-  // Nota: "completata" qui vale per limiti e statistiche (scatta dopo 5 s di
-  // permanenza); il segnalibro "riprendi" resta finché non si arriva in fondo.
+  // Nota: "completata" qui vale per crediti e statistiche (scatta dopo 5 s sul
+  // capitolo 1); il segnalibro "riprendi" resta finché non si arriva in fondo.
   const markComplete = useCallback(async () => {
     if (!userId || !id || completedRef.current === id) return;
     completedRef.current = id;
@@ -386,16 +386,17 @@ export default function DeepDive() {
     } catch {}
   }, [userId, id, story?.deep_dive_time_min, qc]);
 
-  // A curiosity is counted as soon as it's opened — but only after a 5s dwell,
-  // so backing out within 5 seconds (misclick / quick peek) does NOT consume
-  // one of the session's stories. Leaving the screen clears the timer.
+  // A story consumes one credit only once the reader reaches chapter 1 and
+  // stays there (or further) for 5 seconds: browsing the cover/intro or backing
+  // out quickly costs nothing. Returning to the intro within 5 s cancels it.
   const markCompleteRef = useRef(markComplete);
   markCompleteRef.current = markComplete;
+  const inChapters = section >= 1;
   useEffect(() => {
-    if (!userId || !id) return;
+    if (!userId || !id || !inChapters) return;
     const timer = setTimeout(() => markCompleteRef.current(), 5000);
     return () => clearTimeout(timer);
-  }, [userId, id]);
+  }, [userId, id, inChapters]);
 
   // Narration is resolved lazily by the audio player (status → persistent
   // URL); nothing is generated until the listener taps play.
@@ -437,7 +438,7 @@ export default function DeepDive() {
   const onNext = async () => {
     await markComplete();
     try {
-      // 5 storie → pausa di 4 ore: se il limite è scattato, mostra la schermata di pausa.
+      // Crediti esauriti → schermata di pausa con il countdown alla prossima storia.
       if (userId) {
         const limit = await api.limitCheck(userId);
         if (limit.blocked) {

@@ -1,95 +1,122 @@
-import { useEffect, useState } from "react";
+// PAUSE — "storie disponibili": indicatore dei crediti di lettura, in ogni
+// header (Home, Argomenti, Salvati). Libro 3D (asset dell'app) + numero di
+// storie disponibili + uno slot per credito (il 6° slot Premium è dorato) +
+// countdown al prossimo credito quando la ricarica è in corso (+1 ogni 60 min).
+// Con 0 crediti diventa il tasto verso la schermata di pausa.
+import { useEffect, useRef, useState } from "react";
 import { View, Text, Pressable } from "react-native";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
-import { makeStyles, useTheme, radius, typography } from "@/src/theme";
+import { makeStyles, useTheme, radius, typography, withAlpha } from "@/src/theme";
 import { useLimitGate } from "@/src/hooks/use-limit-gate";
+import { useI18n } from "@/src/i18n";
 
-// Session limit is tier-based: the limit-check response carries the right cap
-// (5 for free, 6 for premium). Fall back to 5 while loading.
+const BOOK = require("../../assets/images/kind-book.png");
 
-// Always-visible "reading of the day" indicator shown in every tab header:
-// dots (filled = stories read, empty = remaining) plus an "N/limit" count.
-// If the pause is actually enforcing AND the user is blocked, it turns into a
-// tappable countdown pill instead.
+export function formatCountdown(totalSeconds: number): string {
+  const s = Math.max(0, totalSeconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const mm = m.toString().padStart(2, "0");
+  const ss = sec.toString().padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
 export function LimitBadge({ testID = "limit-badge" }: { testID?: string }) {
   const router = useRouter();
+  const qc = useQueryClient();
   const data = useLimitGate();
-  const [now, setNow] = useState(Date.now());
+  const { t } = useI18n();
   const styles = useStyles();
   const { colors } = useTheme();
+  const [now, setNow] = useState(Date.now());
 
-  const blockedUntilMs = data?.blocked_until ? Date.parse(data.blocked_until) : 0;
-  const blocked = !!data?.enforce && blockedUntilMs > now;
+  const cap = data?.capacity ?? 5;
+  const credits = Math.max(0, Math.min(cap, data?.credits ?? cap));
+  const nextAtMs = data?.next_credit_at ? Date.parse(data.next_credit_at) : 0;
+  const recharging = !!data && credits < cap && nextAtMs > 0;
+  const blocked = !!data?.enforce && credits === 0;
 
+  // Tick every second while a credit is recharging; when the countdown ends,
+  // ask the backend once so the new credit shows up right away.
   useEffect(() => {
-    if (!blocked) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [blocked]);
+    if (!recharging) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [recharging]);
+  const firedFor = useRef(0);
+  useEffect(() => {
+    if (!recharging || now < nextAtMs || firedFor.current === nextAtMs) return;
+    firedFor.current = nextAtMs;
+    qc.invalidateQueries({ queryKey: ["limit"] });
+  }, [now, nextAtMs, recharging, qc]);
 
   if (!data) return null;
-  // Limit disabled → plain counter of what you've read this session, tap to
-  // open the list (no dots / cap, nothing to enforce).
-  if (!data.enforce) {
-    return (
-      <Pressable testID={testID} style={styles.pill} onPress={() => router.push("/read-stories")} accessibilityLabel="read-stories">
-        <Ionicons name="book-outline" size={12} color={colors.brand} />
-        <Text style={[styles.text, { color: colors.brand }]}>{data.session_count}</Text>
-      </Pressable>
-    );
-  }
 
-  const SESSION_LIMIT = data.limit ?? 5;
-
-  // Blocked (only when the pause is enforcing): countdown to reopen.
-  if (blocked) {
-    const s = Math.max(0, Math.floor((blockedUntilMs - now) / 1000));
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const label = h > 0 ? `${h}h ${m.toString().padStart(2, "0")}m` : `${m}m`;
-    return (
-      <Pressable onPress={() => router.push("/pause-limit")} testID={testID} style={[styles.pill, { borderColor: colors.brandSecondary + "55" }]}>
-        <Ionicons name="hourglass-outline" size={12} color={colors.brandSecondary} />
-        <Text style={[styles.text, { color: colors.brandSecondary }]}>{label}</Text>
-      </Pressable>
-    );
-  }
-
-  const read = Math.min(data.session_count, SESSION_LIMIT);
-  const done = read >= SESSION_LIMIT;
-  const accent = done ? colors.success : read >= SESSION_LIMIT - 1 ? colors.warning : colors.brand;
+  const accent = blocked ? colors.brandSecondary : credits === 1 ? colors.warning : colors.brand;
+  const remaining = Math.floor((nextAtMs - now) / 1000);
 
   return (
-    <Pressable testID={testID} style={styles.pill} onPress={() => router.push("/read-stories")}>
-      <Ionicons
-        name={done ? "checkmark-done" : "book-outline"}
-        size={12}
-        color={accent}
-      />
-      <View style={styles.dots}>
-        {Array.from({ length: SESSION_LIMIT }).map((_, i) => (
-          <View
-            key={i}
-            style={[
-              styles.dot,
-              i < read ? { backgroundColor: accent } : { backgroundColor: colors.borderStrong },
-            ]}
-          />
-        ))}
+    <Pressable
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={t.credits_a11y(credits, cap)}
+      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+      onPress={() => router.push(blocked ? "/pause-limit" : "/read-stories")}
+      style={({ pressed }) => [styles.pill, { borderColor: withAlpha(accent, blocked ? 0.55 : 0.3) }, pressed && styles.pressed]}
+    >
+      <View style={styles.bookWrap}>
+        <View pointerEvents="none" style={[styles.bookGlow, { backgroundColor: withAlpha(accent, 0.35), boxShadow: `0px 0px 10px ${withAlpha(accent, 0.7)}` as any }]} />
+        <Image source={BOOK} style={styles.book} contentFit="contain" transition={0} />
       </View>
-      <Text style={[styles.text, { color: accent }]}>{read}/{SESSION_LIMIT}</Text>
+      <Text testID={`${testID}-count`} style={[styles.count, { color: accent }]}>{credits}</Text>
+      <View style={styles.slots} testID={`${testID}-slots`}>
+        {Array.from({ length: cap }).map((_, i) => {
+          const on = i < credits;
+          const premiumSlot = i === 5;
+          const slotColor = premiumSlot ? colors.warning : accent;
+          return (
+            <View
+              key={i}
+              testID={`${testID}-slot-${i}${on ? "-on" : "-off"}${premiumSlot ? "-premium" : ""}`}
+              style={[
+                styles.slot,
+                premiumSlot && styles.slotPremium,
+                on
+                  ? { backgroundColor: slotColor, borderColor: slotColor, boxShadow: `0px 0px 6px ${withAlpha(slotColor, 0.85)}` as any }
+                  : { backgroundColor: "transparent", borderColor: withAlpha(slotColor, 0.45) },
+              ]}
+            />
+          );
+        })}
+      </View>
+      {recharging ? (
+        <View style={styles.timer} testID={`${testID}-timer`}>
+          <Ionicons name="time-outline" size={11} color={colors.onSurfaceTertiary} />
+          <Text style={styles.timerText}>{formatCountdown(remaining)}</Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 }
 
 const useStyles = makeStyles((colors) => ({
   pill: {
+    height: 34, paddingLeft: 6, paddingRight: 10,
     flexDirection: "row", alignItems: "center", gap: 6,
-    backgroundColor: colors.overlay, borderWidth: 1, borderColor: colors.border,
-    paddingHorizontal: 9, paddingVertical: 5, borderRadius: radius.pill,
+    backgroundColor: colors.overlay, borderWidth: 1, borderRadius: radius.pill,
   },
-  dots: { flexDirection: "row", alignItems: "center", gap: 3 },
-  dot: { width: 5, height: 5, borderRadius: 2.5 },
-  text: { fontFamily: typography.bodyBold, fontSize: 11 },
+  pressed: { opacity: 0.8 },
+  bookWrap: { width: 24, height: 24, alignItems: "center", justifyContent: "center" },
+  bookGlow: { position: "absolute", width: 14, height: 14, borderRadius: 7 },
+  book: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
+  count: { fontFamily: typography.displayBold, fontSize: 15, letterSpacing: -0.3, minWidth: 10, textAlign: "center" },
+  slots: { flexDirection: "row", alignItems: "center", gap: 3 },
+  slot: { width: 7, height: 7, borderRadius: 2.5, borderWidth: 1 },
+  slotPremium: { width: 8, height: 8, borderRadius: 2, transform: [{ rotate: "45deg" }], marginLeft: 1 },
+  timer: { flexDirection: "row", alignItems: "center", gap: 3, marginLeft: 2 },
+  timerText: { color: colors.onSurfaceTertiary, fontFamily: typography.bodyBold, fontSize: 11, fontVariant: ["tabular-nums"] },
 }));

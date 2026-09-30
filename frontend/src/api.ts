@@ -119,6 +119,19 @@ export type StoryPreview = {
 
 export type StoryRecap = StoryPreview & { summary: string };
 
+// Story credits ("storie disponibili"): token bucket, +1 every recharge_seconds.
+export type LimitCheck = {
+  enforce: boolean; credits: number; capacity: number; recharge_seconds: number;
+  next_credit_in: number; next_credit_at?: string | null;
+  session_count: number; session_seconds: number; limit: number; is_premium: boolean;
+  reached: boolean; blocked: boolean; blocked_until?: string | null; remaining_seconds?: number;
+};
+
+export type HistoryItem = { story: StoryPreview; read_at: string; reread: boolean };
+export type HistoryResponse = {
+  items: HistoryItem[]; is_premium: boolean; window_days: number | null; hidden_count: number; total: number;
+};
+
 export type Story = StoryPreview & {
   chapters: Chapter[];
   summary: string;
@@ -311,9 +324,15 @@ export const api = {
   listen: (user_id: string, story_id: string, seconds: number) =>
     req<UserState>(`/user/listen`, { method: "POST", body: JSON.stringify({ user_id, story_id, seconds }) }),
   limitCheck: (user_id: string) =>
-    req<{ enforce: boolean; session_count: number; session_seconds: number; limit: number; is_premium: boolean; reached: boolean; blocked: boolean; blocked_until?: string | null; remaining_seconds?: number }>(
-      `/user/${user_id}/limit-check`,
-    ),
+    req<LimitCheck>(`/user/${user_id}/limit-check`),
+  history: (user_id: string, filters?: { q?: string; category_id?: string; since?: string }) => {
+    const qs = new URLSearchParams();
+    if (filters?.q) qs.set("q", filters.q);
+    if (filters?.category_id) qs.set("category_id", filters.category_id);
+    if (filters?.since) qs.set("since", filters.since);
+    const s = qs.toString();
+    return req<HistoryResponse>(`/user/${user_id}/history${s ? "?" + s : ""}`);
+  },
   ttsStatus: (story_id: string, opts?: { voice?: VoiceId; preview?: boolean }) => {
     const qs = new URLSearchParams();
     if (opts?.voice && opts.voice !== FREE_VOICE) qs.set("voice", opts.voice);

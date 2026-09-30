@@ -4,10 +4,10 @@
 // countdown al prossimo credito quando la ricarica è in corso (+1 ogni 2 h
 // base, +1 ogni ora Premium).
 // Con 0 crediti diventa il tasto verso la schermata di pausa.
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, Pressable } from "react-native";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 import { makeStyles, useTheme, radius, typography, withAlpha } from "@/src/theme";
@@ -34,6 +34,11 @@ export function LimitBadge({ testID = "limit-badge" }: { testID?: string }) {
   const styles = useStyles();
   const { colors } = useTheme();
   const [now, setNow] = useState(Date.now());
+  // La schermata resta montata sotto il lettore e durante le transizioni:
+  // il countdown avanza solo quando è davvero visibile (niente lavoro sul
+  // thread JS mentre qualcos'altro si muove).
+  const [focused, setFocused] = useState(true);
+  useFocusEffect(useCallback(() => { setFocused(true); return () => setFocused(false); }, []));
 
   const cap = data?.capacity ?? 4;
   const credits = Math.max(0, Math.min(cap, data?.credits ?? cap));
@@ -44,10 +49,11 @@ export function LimitBadge({ testID = "limit-badge" }: { testID?: string }) {
   // Tick every second while a credit is recharging; when the countdown ends,
   // ask the backend once so the new credit shows up right away.
   useEffect(() => {
-    if (!recharging) return;
+    if (!recharging || !focused) return;
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [recharging]);
+  }, [recharging, focused]);
   const firedFor = useRef(0);
   useEffect(() => {
     if (!recharging || now < nextAtMs || firedFor.current === nextAtMs) return;

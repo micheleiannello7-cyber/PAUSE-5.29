@@ -5,7 +5,7 @@ import {
 import Ionicons from "@react-native-vector-icons/ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
-  useSharedValue, useAnimatedScrollHandler, useAnimatedRef, runOnJS, interpolate, Extrapolation, FadeIn, FadeOut,
+  useSharedValue, useAnimatedScrollHandler, useAnimatedRef, runOnJS, interpolate, Extrapolation,
 } from "react-native-reanimated";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -553,14 +553,16 @@ export default function DeepDive() {
         {section === 1 ? (
           <CoachTip id="reader" text={t.tip_reader} icon="book-outline" style={{ top: headerBottom + spacing.md }} />
         ) : null}
-        {isReread && section === 0 ? (
-          <Animated.View pointerEvents="none" entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)}
-            style={[styles.rereadWrap, { top: headerBottom + spacing.md }]} testID="reader-reread-label">
+        {/* Etichetta statica (nessuna animazione d'ingresso/uscita) e montata solo
+            dopo lo scambio con il livello di transizione: nessun lavoro extra
+            nella coda della transizione Home → lettura. */}
+        {isReread && section === 0 && chaptersReady ? (
+          <View pointerEvents="none" style={[styles.rereadWrap, { top: headerBottom + spacing.md }]} testID="reader-reread-label">
             <View style={styles.rereadPill}>
               <Ionicons name="refresh-outline" size={13} color={colors.success} />
               <Text style={styles.rereadText}>{t.reader_reread}</Text>
             </View>
-          </Animated.View>
+          </View>
         ) : null}
         {isPremium ? <AudioSheet visible={audioOpen} onClose={() => setAudioOpen(false)} /> : null}
       </StoryAudioProvider>

@@ -448,3 +448,6 @@ Solo presentazione (nessuna modifica backend/contenuti):
 - **Premium screen**: righe "Storie disponibili 5→6 (+1 ogni 60 min)" e "Cronologia 10 giorni → Completa".
 - **Cronologia** `app/history.tsx` (Profilo → "Le tue scoperte" → Cronologia): costruita su `completions` (rilettura loggata con `reread:true`, ignorata da stats). Base: ultimi 10 giorni + card Premium; Premium: tutto + ricerca titolo + filtri periodo/categoria. Endpoint `GET /api/user/{id}/history?q&category_id&since`.
 - Test: `/app/test_reports/iteration_3.json` (backend 10/10, frontend OK).
+- **Rilettura gratuita**: le storie già lette non consumano crediti (was_new); etichetta nel lettore sull'intro (`reader-reread-label`), pill "Rilettura gratuita" su ogni card della Cronologia, link "Rileggi le tue scoperte" nella schermata di pausa (`pause-limit-reread`); route `history` esclusa dal redirect del gate.
+- **Avviso ricarica**: toast in Home (`credit-back-toast`) quando i crediti salgono rispetto all'ultimo valore visto (AsyncStorage `pause.credits_seen.<uid>`).
+- Cronologia: header solo titolo (sottotitolo rimosso); ricerca Premium solo per titolo.

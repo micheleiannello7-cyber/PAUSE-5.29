@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Dimensions } from "react-native";
+import { View, Text, Pressable, StyleSheet, ScrollView, Dimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -10,7 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/src/api";
 import { RecapCard } from "@/src/components/recap-card";
-import { colors, spacing, radius, typography } from "@/src/theme";
+import { colors, spacing, radius, typography, withAlpha } from "@/src/theme";
 import { useUserId } from "@/src/session";
 import { PauseLogo } from "@/src/components/pause-logo";
 import { GradientText } from "@/src/components/gradient-text";
@@ -155,6 +155,18 @@ export default function PauseLimit() {
             </View>
           </LinearGradient>
 
+          <Pressable onPress={() => router.push("/history")} testID="pause-limit-reread" accessibilityRole="button"
+            style={({ pressed }) => [styles.rereadRow, pressed && { opacity: 0.85 }]}>
+            <View style={styles.rereadIcon}>
+              <Ionicons name="refresh-outline" size={18} color={colors.success} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rereadTitle}>{t.pl_reread_cta}</Text>
+              <Text style={styles.rereadSub}>{t.pl_reread_sub}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          </Pressable>
+
           {/* Recap of the stories just read */}
           {recap.data && recap.data.length > 0 ? (
             <View style={styles.recap} testID="session-recap">
@@ -281,6 +293,13 @@ const styles = StyleSheet.create({
   },
   finalTitle: { color: colors.onBrandSecondary, fontFamily: typography.displayBold, fontSize: 16, lineHeight: 22, marginBottom: 6 },
   finalBody: { color: "rgba(255,255,255,0.85)", fontFamily: typography.body, fontSize: 14, lineHeight: 20 },
+  rereadRow: {
+    marginTop: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md,
+    borderRadius: radius.lg - 2, backgroundColor: colors.glassBgStrong, borderWidth: 1, borderColor: withAlpha(colors.success, 0.35),
+  },
+  rereadIcon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: withAlpha(colors.success, 0.12) },
+  rereadTitle: { color: colors.onSurface, fontFamily: typography.bodyBold, fontSize: 14 },
+  rereadSub: { color: colors.muted, fontFamily: typography.body, fontSize: 12, marginTop: 2 },
   recap: { marginTop: spacing.xl, gap: spacing.md },
   recapTitle: { color: colors.muted, fontFamily: typography.bodyBold, fontSize: 11, letterSpacing: 2 },
   recapSub: { color: colors.muted, fontFamily: typography.body, fontSize: 13, marginTop: -spacing.sm, marginBottom: spacing.xs },

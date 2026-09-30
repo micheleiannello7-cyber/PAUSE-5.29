@@ -1347,7 +1347,7 @@ async def user_history(
             continue
         if cat and doc.get("category_id") != cat:
             continue
-        if needle and needle not in f"{doc.get('title', '')} {doc.get('hook', '')}".lower():
+        if needle and needle not in str(doc.get("title", "")).lower():
             continue
         items.append(HistoryItem(story=StoryPreview(**doc), read_at=e["at"].isoformat(), reread=e["reread"]))
     return {

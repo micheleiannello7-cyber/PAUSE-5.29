@@ -7,7 +7,7 @@ import Animated, { FadeInDown, FadeOutDown, Easing } from "react-native-reanimat
 import Ionicons from "@react-native-vector-icons/ionicons";
 import { makeStyles, useTheme, spacing, typography, radius, withAlpha } from "@/src/theme";
 
-export type OnboardingNotice = { title: string; body: string; icon?: "grid-outline" | "layers-outline" | "lock-closed-outline" };
+export type OnboardingNotice = { title: string; body: string; icon?: "grid-outline" | "layers-outline" | "lock-closed-outline" | "book-outline" };
 
 export function OnboardingToast({
   notice, bottom, onHide, testID = "onboarding-toast",

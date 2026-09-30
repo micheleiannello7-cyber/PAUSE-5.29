@@ -22,7 +22,7 @@ export function useLimitGate() {
   useEffect(() => {
     // Let the reader finish the current story: redirect only from the tabs / other screens.
     const inLimit = (segments as string[]).some((s) =>
-      s === "pause-limit" || s === "onboarding" || s === "deep-dive" || s === "story",
+      s === "pause-limit" || s === "onboarding" || s === "deep-dive" || s === "story" || s === "history",
     );
     if (q.data?.blocked && !inLimit) {
       router.replace("/pause-limit");

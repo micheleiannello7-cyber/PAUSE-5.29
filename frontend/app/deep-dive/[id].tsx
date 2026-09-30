@@ -1,10 +1,11 @@
 import { useRef, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  View, StyleSheet, ActivityIndicator, Share, useWindowDimensions, LayoutChangeEvent, Platform, BackHandler,
+  View, Text, StyleSheet, ActivityIndicator, Share, useWindowDimensions, LayoutChangeEvent, Platform, BackHandler,
 } from "react-native";
+import Ionicons from "@react-native-vector-icons/ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
-  useSharedValue, useAnimatedScrollHandler, useAnimatedRef, runOnJS, interpolate, Extrapolation,
+  useSharedValue, useAnimatedScrollHandler, useAnimatedRef, runOnJS, interpolate, Extrapolation, FadeIn, FadeOut,
 } from "react-native-reanimated";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -14,7 +15,7 @@ import * as Haptics from "@/src/haptics";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
 import { api } from "@/src/api";
-import { makeStyles, useTheme, spacing, ThemeColors } from "@/src/theme";
+import { makeStyles, useTheme, spacing, radius, typography, withAlpha, ThemeColors } from "@/src/theme";
 import { useUserId } from "@/src/session";
 import { useStoryActions } from "@/src/hooks/use-story-actions";
 import { saveReadingProgress, clearReadingProgress, getReadingProgress, toStoryPreview } from "@/src/reading-progress";
@@ -116,6 +117,11 @@ export default function DeepDive() {
   });
   const { toggle } = useStoryActions(userId, id);
   const isPremium = !!user?.is_premium;
+  // Rilettura: fissata al primo caricamento dell'utente (non cambia quando la
+  // storia viene segnata come letta durante questa stessa lettura).
+  const wasReadRef = useRef<boolean | null>(null);
+  if (wasReadRef.current === null && user && id) wasReadRef.current = user.completed_story_ids.includes(id);
+  const isReread = wasReadRef.current === true;
 
   // Sezioni: intro · una per capitolo · conclusione ("Da ricordare" + prossima storia).
   const chapterCount = story?.chapters.length ?? 0;
@@ -547,6 +553,15 @@ export default function DeepDive() {
         {section === 1 ? (
           <CoachTip id="reader" text={t.tip_reader} icon="book-outline" style={{ top: headerBottom + spacing.md }} />
         ) : null}
+        {isReread && section === 0 ? (
+          <Animated.View pointerEvents="none" entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)}
+            style={[styles.rereadWrap, { top: headerBottom + spacing.md }]} testID="reader-reread-label">
+            <View style={styles.rereadPill}>
+              <Ionicons name="refresh-outline" size={13} color={colors.success} />
+              <Text style={styles.rereadText}>{t.reader_reread}</Text>
+            </View>
+          </Animated.View>
+        ) : null}
         {isPremium ? <AudioSheet visible={audioOpen} onClose={() => setAudioOpen(false)} /> : null}
       </StoryAudioProvider>
       </SwipeBack>
@@ -567,6 +582,12 @@ export default function DeepDive() {
 const useStyles = makeStyles((colors: ThemeColors) => ({
   container: { flex: 1, backgroundColor: colors.surface },
   scroll: { flex: 1 },
+  rereadWrap: { position: "absolute", left: 0, right: 0, alignItems: "center", zIndex: 5 },
+  rereadPill: {
+    flexDirection: "row", alignItems: "center", gap: 6, height: 30, paddingHorizontal: 12, borderRadius: radius.pill,
+    backgroundColor: colors.overlay, borderWidth: 1, borderColor: withAlpha(colors.success, 0.5),
+  },
+  rereadText: { color: colors.onSurface, fontFamily: typography.bodyBold, fontSize: 11.5 },
   shareHidden: { position: "absolute", left: -4000, top: 0, width: SHARE_CARD_WIDTH, pointerEvents: "none" },
   listen: { alignSelf: "flex-start", minWidth: 180 },
   ending: { paddingTop: spacing.xl },

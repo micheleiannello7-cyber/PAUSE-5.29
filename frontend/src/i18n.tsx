@@ -248,7 +248,10 @@ const it = {
   history_premium_b: (n: number) => n > 0
     ? `${n} ${n === 1 ? "storia più vecchia" : "storie più vecchie"} di 10 giorni ${n === 1 ? "ti aspetta" : "ti aspettano"}. Con Premium la cronologia è completa, con ricerca e filtri.`
     : "Con Premium la cronologia è completa e senza limiti di tempo, con ricerca e filtri.",
-  history_reread: "Riletta",
+  history_reread: "Rilettura gratuita",
+  reader_reread: "Rilettura gratuita · non consuma storie",
+  pl_reread_cta: "Rileggi le tue scoperte", pl_reread_sub: "Le storie già lette non consumano crediti",
+  credit_back_t: "Una nuova storia è pronta", credit_back_b: "Un credito si è ricaricato: buona lettura.",
   pw_r_history: "Cronologia delle letture", pw_r_history_sub: "Ritrova, cerca e rileggi ogni storia scoperta",
   pw_r_history_free: "10 giorni", pw_r_history_premium: "Completa",
   pw_r_sessions_sub: "Si ricaricano: +1 ogni 60 minuti",
@@ -562,7 +565,10 @@ const en: typeof it = {
   history_premium_b: (n: number) => n > 0
     ? `${n} ${n === 1 ? "story" : "stories"} older than 10 days ${n === 1 ? "is" : "are"} waiting for you. Premium unlocks the full history, with search and filters.`
     : "Premium unlocks the full history with no time limit, plus search and filters.",
-  history_reread: "Re-read",
+  history_reread: "Free re-read",
+  reader_reread: "Free re-read · doesn't use a story",
+  pl_reread_cta: "Re-read your discoveries", pl_reread_sub: "Stories you've already read don't use credits",
+  credit_back_t: "A new story is ready", credit_back_b: "A credit has recharged: enjoy the read.",
   pw_r_history: "Reading history", pw_r_history_sub: "Find, search and re-read every story you discovered",
   pw_r_history_free: "10 days", pw_r_history_premium: "Full",
   pw_r_sessions_sub: "They recharge: +1 every 60 minutes",

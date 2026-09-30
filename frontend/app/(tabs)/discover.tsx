@@ -19,6 +19,9 @@ import { HomeStoryDeck, CardRect, DECK_BELOW_CARD_H } from "@/src/components/hom
 import { StoryMorph, MORPH_DURATION, MORPH_EASING } from "@/src/components/story-morph";
 import { useMorphHost } from "@/src/components/morph-host";
 import { LimitBadge } from "@/src/components/limit-badge";
+import { useLimitGate } from "@/src/hooks/use-limit-gate";
+import { OnboardingToast, OnboardingNotice } from "@/src/components/onboarding-toast";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HomeBackdrop } from "@/src/components/home-backdrop";
 import { ResumeCard } from "@/src/components/resume-card";
 import { MilestoneCelebration } from "@/src/components/milestone-celebration";
@@ -116,6 +119,24 @@ export default function Discover() {
     setOffCats(next);
     if (userId) void saveHomeOffCategories(userId, next);
   }, [activeIds, tileCats, userId, showMinOneToast]);
+
+  // Avviso ricarica: quando i crediti salgono rispetto all'ultimo valore visto
+  // (anche tra un'apertura e l'altra dell'app), un toast breve in Home.
+  const limit = useLimitGate();
+  const [rechargeNotice, setRechargeNotice] = useState<OnboardingNotice | null>(null);
+  const credits = limit?.credits;
+  useEffect(() => {
+    if (!userId || credits === undefined) return;
+    const key = `pause.credits_seen.${userId}`;
+    (async () => {
+      const stored = await AsyncStorage.getItem(key);
+      if (stored !== null && credits > Number(stored)) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        setRechargeNotice({ title: t.credit_back_t, body: t.credit_back_b, icon: "book-outline" });
+      }
+      await AsyncStorage.setItem(key, String(credits));
+    })();
+  }, [credits, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [resume, setResume] = useState<ReadingProgress | null>(null);
   const showResume = !!resume && resume.progress < 0.95;
@@ -318,6 +339,7 @@ export default function Discover() {
         </Animated.View>
       </View>
       <MilestoneCelebration milestone={milestone} onClose={dismissMilestone} onStats={() => { dismissMilestone(); router.push("/stats"); }} />
+      <OnboardingToast notice={rechargeNotice} bottom={insets.bottom + spacing.xxl} onHide={() => setRechargeNotice(null)} testID="credit-back-toast" />
     </View>
   );
 }

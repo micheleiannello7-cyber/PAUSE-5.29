@@ -122,9 +122,6 @@ export default function History() {
         </Pressable>
         <View style={styles.headerTitle}>
           <Text style={styles.title} numberOfLines={1} testID="history-title">{t.history_title}</Text>
-          <Text style={styles.subtitle} numberOfLines={1} testID="history-subtitle">
-            {q.data && !premium ? `${t.history_sub} · ${t.history_window}` : t.history_sub}
-          </Text>
         </View>
         <HomeButton testID="history-home" />
       </View>
@@ -285,9 +282,10 @@ function HistoryCard({ item, index, when, onPress }: { item: HistoryItem; index:
           <View style={styles.metaRow}>
             <Ionicons name="time-outline" size={11} color={colors.muted} />
             <Text style={styles.metaText} testID={`history-${story.id}-date`}>{when}</Text>
-            {item.reread ? (
-              <View style={styles.rereadPill}><Text style={styles.rereadText}>{t.history_reread}</Text></View>
-            ) : null}
+            <View style={styles.rereadPill} testID={`history-${story.id}-free`}>
+              <Ionicons name="refresh-outline" size={9} color={colors.success} />
+              <Text style={styles.rereadText}>{t.history_reread}</Text>
+            </View>
           </View>
         </View>
         <Ionicons name="chevron-forward" size={16} color={colors.muted} />
@@ -303,9 +301,8 @@ const useStyles = makeStyles((colors) => ({
     width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center",
     backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border,
   },
-  headerTitle: { flex: 1, alignItems: "center", gap: 3 },
+  headerTitle: { flex: 1, alignItems: "center" },
   title: { color: colors.onSurface, fontFamily: typography.displayBold, fontSize: 18, textAlign: "center" },
-  subtitle: { color: colors.muted, fontFamily: typography.body, fontSize: 11, textAlign: "center", lineHeight: 15 },
   tools: { paddingHorizontal: spacing.xl, gap: spacing.sm, marginBottom: spacing.xs },
   searchRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   searchWrap: {
@@ -349,8 +346,8 @@ const useStyles = makeStyles((colors) => ({
   cardTitle: { color: colors.onSurface, fontFamily: typography.displayBold, fontSize: 14, lineHeight: 18 },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 1 },
   metaText: { color: colors.muted, fontFamily: typography.body, fontSize: 11 },
-  rereadPill: { marginLeft: 4, paddingHorizontal: 6, paddingVertical: 1, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.borderStrong },
-  rereadText: { color: colors.muted, fontFamily: typography.bodyBold, fontSize: 8.5, letterSpacing: 0.8 },
+  rereadPill: { marginLeft: 4, flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 6, paddingVertical: 1, borderRadius: radius.pill, borderWidth: 1, borderColor: withAlpha(colors.success, 0.45), backgroundColor: withAlpha(colors.success, 0.08) },
+  rereadText: { color: colors.success, fontFamily: typography.bodyBold, fontSize: 8.5, letterSpacing: 0.8 },
   premiumWrap: {
     flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.xl,
     padding: spacing.md, borderRadius: radius.lg - 2, overflow: "hidden",

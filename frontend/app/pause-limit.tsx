@@ -111,9 +111,9 @@ export default function PauseLimit() {
         {/* Cards */}
         <View style={styles.cards}>
           <SessionStats
-            stories={data?.session_count ?? recap.data?.length ?? 5}
+            stories={data?.session_count ?? recap.data?.length ?? 4}
             seconds={data?.session_seconds ?? 0}
-            limit={data?.limit ?? 5}
+            limit={data?.limit ?? 4}
           />
 
           <View style={styles.card}>
@@ -128,7 +128,7 @@ export default function PauseLimit() {
             color={PURPLE}
             icon={<MaterialDesignIcons name="brain" size={26} color={PURPLE} />}
             title={t.pl_1_title}
-            body={t.pl_1_body(data?.limit ?? 5)}
+            body={t.pl_1_body(data?.limit ?? 4)}
           />
 
           <NumberedCard
@@ -151,7 +151,7 @@ export default function PauseLimit() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.finalTitle}>{t.pl_final_title}</Text>
-              <Text style={styles.finalBody}>{t.pl_final_body(returnIn, data?.limit ?? 5)}</Text>
+              <Text style={styles.finalBody}>{t.pl_final_body(returnIn, data?.limit ?? 4, Math.round((data?.recharge_seconds ?? 7200) / 60))}</Text>
             </View>
           </LinearGradient>
 

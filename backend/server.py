@@ -480,12 +480,14 @@ async def _pick_by_taste(query: dict, state: Optional[dict]) -> Optional[dict]:
 # gate on its entitlement instead.
 # ---------------------------------------------------------------------------
 # Story credits ("storie disponibili"): a token bucket. Every reader starts
-# full (5 free / 6 premium); a story consumes one credit once the reader
-# dwells on chapter 1; credits come back one every RECHARGE_SECONDS for both
-# tiers — only the capacity differs.
-FREE_CAPACITY = 5
-PREMIUM_CAPACITY = 6
-RECHARGE_SECONDS = 3600
+# full (4 free / 5 premium); a NEW story consumes one credit once the reader
+# dwells on chapter 1; credits come back one every recharge interval
+# (2 h free / 1 h premium), computed on server time so device-clock changes
+# can't mint credits. Recharge keeps running while the app is closed.
+FREE_CAPACITY = 4
+PREMIUM_CAPACITY = 5
+FREE_RECHARGE_SECONDS = 2 * 3600
+PREMIUM_RECHARGE_SECONDS = 3600
 # Free readers keep at most this many specific categories active ("all" is
 # always allowed); premium has no cap.
 FREE_TOPICS_LIMIT = 4
@@ -525,6 +527,11 @@ def _capacity_for(state: Optional[dict]) -> int:
     return PREMIUM_CAPACITY if state and state.get("is_premium") else FREE_CAPACITY
 
 
+def _recharge_for(state: Optional[dict]) -> int:
+    """Seconds per credit for this user's tier."""
+    return PREMIUM_RECHARGE_SECONDS if state and state.get("is_premium") else FREE_RECHARGE_SECONDS
+
+
 def _limit_enforced(state: dict) -> bool:
     return os.environ.get("ENFORCE_LIMIT", "false").lower() == "true" and state.get("limit_enabled", True)
 
@@ -533,6 +540,7 @@ def _credit_state(state: dict, now: datetime) -> tuple[int, datetime, bool]:
     """Token bucket read: (credits, anchor, changed). `anchor` is the instant the
     current recharge started counting from; meaningful only when credits < cap."""
     cap = _capacity_for(state)
+    step = _recharge_for(state)
     raw = state.get("credits")
     anchor = _parse_dt(state.get("credits_at"))
     if raw is None or anchor is None:
@@ -540,20 +548,20 @@ def _credit_state(state: dict, now: datetime) -> tuple[int, datetime, bool]:
     credits = int(raw)
     changed = False
     if credits < cap:
-        gained = int((now - anchor).total_seconds() // RECHARGE_SECONDS)
+        gained = int((now - anchor).total_seconds() // step)
         if gained > 0:
             credits = min(cap, credits + gained)
-            anchor = anchor + timedelta(seconds=gained * RECHARGE_SECONDS)
+            anchor = anchor + timedelta(seconds=gained * step)
             changed = True
     if credits > cap:  # premium → free downgrade
         credits, changed = cap, True
     return credits, anchor, changed
 
 
-def _next_credit_seconds(credits: int, anchor: datetime, cap: int, now: datetime) -> int:
+def _next_credit_seconds(credits: int, anchor: datetime, cap: int, step: int, now: datetime) -> int:
     if credits >= cap:
         return 0
-    return max(1, RECHARGE_SECONDS - int((now - anchor).total_seconds()))
+    return max(1, step - int((now - anchor).total_seconds()))
 
 
 async def _refresh_credits(user_id: str, state: dict, now: datetime) -> tuple[int, datetime, int]:
@@ -1273,14 +1281,15 @@ async def limit_check(user_id: str):
     enforce = _limit_enforced(state)
     now = datetime.now(timezone.utc)
     credits, anchor, cap = await _refresh_credits(user_id, state, now)
-    next_in = _next_credit_seconds(credits, anchor, cap, now)
+    step = _recharge_for(state)
+    next_in = _next_credit_seconds(credits, anchor, cap, step, now)
     next_at = (now + timedelta(seconds=next_in)) if next_in else None
     blocked = bool(enforce and credits <= 0)
     return {
         "enforce": enforce,
         "credits": credits,
         "capacity": cap,
-        "recharge_seconds": RECHARGE_SECONDS,
+        "recharge_seconds": step,
         "next_credit_in": next_in,
         "next_credit_at": next_at.isoformat() if next_at else None,
         # Legacy fields kept for existing UI: "used" count and the reopen time.

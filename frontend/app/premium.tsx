@@ -58,7 +58,9 @@ export default function Premium() {
   // e i gate `isPremium` di audio, browse, playlist, stats, accento).
   type Row = { icon: string; title: string; sub?: string; free: string | false; premium: string | true };
   const rows: Row[] = [
-    { icon: "layers-outline", title: t.pw_r_sessions, sub: t.pw_r_sessions_sub, free: "5", premium: "6" },
+    { icon: "layers-outline", title: t.pw_r_sessions, sub: t.pw_r_sessions_sub, free: "4", premium: "5" },
+    { icon: "flash-outline", title: t.pw_r_recharge, sub: t.pw_r_recharge_sub, free: t.pw_r_recharge_free, premium: t.pw_r_recharge_premium },
+    { icon: "compass-outline", title: t.pw_r_topics, sub: t.pw_r_topics_sub, free: "4", premium: t.pw_unlimited },
     { icon: "time-outline", title: t.pw_r_history, sub: t.pw_r_history_sub, free: t.pw_r_history_free, premium: t.pw_r_history_premium },
     { icon: "headset-outline", title: t.pw_r_audio, sub: t.pw_r_audio_sub, free: false, premium: true },
     { icon: "albums-outline", title: t.pw_r_choose, sub: t.pw_r_choose_sub, free: false, premium: true },

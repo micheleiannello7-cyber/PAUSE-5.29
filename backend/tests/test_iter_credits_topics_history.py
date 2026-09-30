@@ -5,8 +5,8 @@ Covers:
 - limit-check on fresh user (5/5, blocked false, next_credit_in 0)
 - credit consumption via /user/complete (5 stories → 0 credits, blocked)
 - reread does not consume credit
-- token bucket recharge via credits_at manipulation (1h+ → +1; 2.5h → +2, capped)
-- premium capacity 6, downgrade clamps
+- token bucket recharge via credits_at manipulation (free 2h/credit, premium 1h/credit, capped)
+- premium capacity 5 (free 4), downgrade clamps
 - topics limit (402 topics_limit for free >4 specific; premium unlimited; 'all' free)
 - history endpoint: newest first, free-only 10 days + hidden_count, premium q/category/since work
 - stats ignores reread entries
@@ -63,25 +63,24 @@ def test_fresh_user_limit_check(s, uid):
     assert r.status_code == 200, r.text
     data = r.json()
     assert data["enforce"] is True, f"ENFORCE_LIMIT should be true: {data}"
-    assert data["credits"] == 5
-    assert data["capacity"] == 5
+    assert data["credits"] == 4
+    assert data["capacity"] == 4
     assert data["next_credit_in"] == 0
     assert data["blocked"] is False
-    assert data["recharge_seconds"] == 3600
+    assert data["recharge_seconds"] == 7200
     assert data["is_premium"] is False
 
 
-def test_consume_5_credits_then_block(s, uid):
+def test_consume_4_credits_then_block(s, uid):
     ids = _get_story_ids(6)
-    assert len(ids) >= 5
-    # Consume 5 distinct stories
-    for i, sid in enumerate(ids[:5]):
+    assert len(ids) >= 4
+    for sid in ids[:4]:
         r = s.post(f"{API}/user/complete", json={"user_id": uid, "story_id": sid, "minutes": 2, "seconds": 30})
         assert r.status_code == 200, r.text
     check = s.get(f"{API}/user/{uid}/limit-check").json()
     assert check["credits"] == 0, check
     assert check["blocked"] is True
-    assert 3500 <= check["next_credit_in"] <= 3600
+    assert 7100 <= check["next_credit_in"] <= 7200
     assert check["blocked_until"] is not None
 
     # Re-post the SAME story id (already completed) → no credit change
@@ -92,47 +91,59 @@ def test_consume_5_credits_then_block(s, uid):
     assert check2["blocked"] is True
 
 
-def test_token_bucket_recharge_1h(s, uid):
+def test_token_bucket_free_recharge_2h(s, uid):
     ids = _get_story_ids(5)
-    for sid in ids[:5]:
+    for sid in ids[:4]:
         s.post(f"{API}/user/complete", json={"user_id": uid, "story_id": sid, "minutes": 1, "seconds": 5})
-    # Set credits_at to 1h + 5m ago
+    # 1h05 ago → nothing yet for a free user (2h per credit)
     past = (datetime.now(timezone.utc) - timedelta(seconds=3600 + 300)).isoformat()
+    _db.user_state.update_one({"user_id": uid}, {"$set": {"credits_at": past}})
+    check = s.get(f"{API}/user/{uid}/limit-check").json()
+    assert check["credits"] == 0, check
+    # 2h05 ago → +1
+    past = (datetime.now(timezone.utc) - timedelta(seconds=7200 + 300)).isoformat()
     _db.user_state.update_one({"user_id": uid}, {"$set": {"credits_at": past}})
     check = s.get(f"{API}/user/{uid}/limit-check").json()
     assert check["credits"] == 1, check
     assert check["blocked"] is False
-    assert check["capacity"] == 5
+    assert check["capacity"] == 4
 
 
-def test_token_bucket_recharge_2_5h(s, uid):
+def test_token_bucket_caps_after_days(s, uid):
     ids = _get_story_ids(5)
-    for sid in ids[:5]:
+    for sid in ids[:4]:
         s.post(f"{API}/user/complete", json={"user_id": uid, "story_id": sid, "minutes": 1, "seconds": 5})
-    past = (datetime.now(timezone.utc) - timedelta(seconds=int(2.5 * 3600))).isoformat()
+    past = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
     _db.user_state.update_one({"user_id": uid}, {"$set": {"credits_at": past}})
     check = s.get(f"{API}/user/{uid}/limit-check").json()
-    assert check["credits"] == 2, check
+    assert check["credits"] == 4, check
+    assert check["next_credit_in"] == 0
 
 
-def test_premium_capacity_6_and_downgrade(s, uid):
-    # Bootstrap
+def test_premium_capacity_5_hourly_and_downgrade(s, uid):
     s.get(f"{API}/user/{uid}/limit-check")
-    # Promote to premium
     r = s.post(f"{API}/user/premium", json={"user_id": uid, "active": True})
     assert r.status_code == 200
     check = s.get(f"{API}/user/{uid}/limit-check").json()
-    assert check["capacity"] == 6
+    assert check["capacity"] == 5
+    assert check["recharge_seconds"] == 3600
     assert check["is_premium"] is True
-    # After upgrade, credits do not instantly bump to 6; they grow with the
-    # token bucket. But they must fit within the new capacity.
-    assert 5 <= check["credits"] <= 6, check
+    assert 4 <= check["credits"] <= 5, check
+    # Premium recharges hourly
+    ids = _get_story_ids(3)
+    for sid in ids[:2]:
+        s.post(f"{API}/user/complete", json={"user_id": uid, "story_id": sid, "minutes": 1, "seconds": 5})
+    past = (datetime.now(timezone.utc) - timedelta(seconds=3600 + 60)).isoformat()
+    _db.user_state.update_one({"user_id": uid}, {"$set": {"credits_at": past}})
+    check = s.get(f"{API}/user/{uid}/limit-check").json()
+    assert check["credits"] == 3, check
 
-    # Downgrade → clamp to 5
+    # Downgrade → clamp to 4
+    _db.user_state.update_one({"user_id": uid}, {"$set": {"credits": 5}})
     s.post(f"{API}/user/premium", json={"user_id": uid, "active": False})
     check = s.get(f"{API}/user/{uid}/limit-check").json()
-    assert check["capacity"] == 5
-    assert check["credits"] <= 5, check
+    assert check["capacity"] == 4
+    assert check["credits"] <= 4, check
 
 
 # ------------------------- topics limit -------------------------

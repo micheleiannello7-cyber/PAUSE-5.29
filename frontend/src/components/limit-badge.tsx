@@ -1,7 +1,8 @@
 // PAUSE — "storie disponibili": indicatore dei crediti di lettura, in ogni
 // header (Home, Argomenti, Salvati). Libro 3D (asset dell'app) + numero di
-// storie disponibili + uno slot per credito (il 6° slot Premium è dorato) +
-// countdown al prossimo credito quando la ricarica è in corso (+1 ogni 60 min).
+// storie disponibili + uno slot per credito (l'ultimo slot Premium è dorato) +
+// countdown al prossimo credito quando la ricarica è in corso (+1 ogni 2 h
+// base, +1 ogni ora Premium).
 // Con 0 crediti diventa il tasto verso la schermata di pausa.
 import { useEffect, useRef, useState } from "react";
 import { View, Text, Pressable } from "react-native";
@@ -34,7 +35,7 @@ export function LimitBadge({ testID = "limit-badge" }: { testID?: string }) {
   const { colors } = useTheme();
   const [now, setNow] = useState(Date.now());
 
-  const cap = data?.capacity ?? 5;
+  const cap = data?.capacity ?? 4;
   const credits = Math.max(0, Math.min(cap, data?.credits ?? cap));
   const nextAtMs = data?.next_credit_at ? Date.parse(data.next_credit_at) : 0;
   const recharging = !!data && credits < cap && nextAtMs > 0;
@@ -76,7 +77,7 @@ export function LimitBadge({ testID = "limit-badge" }: { testID?: string }) {
       <View style={styles.slots} testID={`${testID}-slots`}>
         {Array.from({ length: cap }).map((_, i) => {
           const on = i < credits;
-          const premiumSlot = i === 5;
+          const premiumSlot = !!data.is_premium && i === cap - 1;
           const slotColor = premiumSlot ? colors.warning : accent;
           return (
             <View
